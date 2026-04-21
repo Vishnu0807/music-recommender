@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Last.FM Music Recommender</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #08131c;
+            --bg-elevated: rgba(14, 28, 39, 0.85);
+            --panel: rgba(11, 24, 34, 0.82);
+            --border: rgba(117, 171, 197, 0.18);
+            --text: #edf5f9;
+            --muted: #98afbe;
+            --accent: #39c7b7;
+            --accent-soft: rgba(57, 199, 183, 0.16);
+            --accent-alt: #ff9a3d;
+            --danger: #ff6b6b;
+            --shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "IBM Plex Sans", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, rgba(57, 199, 183, 0.18), transparent 28%),
+                radial-gradient(circle at top right, rgba(255, 154, 61, 0.16), transparent 26%),
+                linear-gradient(160deg, #071019 0%, #0a1822 46%, #102331 100%);
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 34px 34px;
+            mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.65), transparent 90%);
+        }
+
+        #root {
+            width: 100%;
+        }
+
+        .page-shell {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 32px 20px 48px;
+        }
+
+        .hero {
+            position: relative;
+            overflow: hidden;
+            padding: 28px;
+            border: 1px solid var(--border);
+            border-radius: 28px;
+            background: linear-gradient(140deg, rgba(10, 23, 33, 0.94), rgba(12, 34, 46, 0.84));
+            box-shadow: var(--shadow);
+            margin-bottom: 24px;
+        }
+
+        .hero::after {
+            content: "";
+            position: absolute;
+            width: 240px;
+            height: 240px;
+            right: -80px;
+            top: -70px;
+            background: radial-gradient(circle, rgba(57, 199, 183, 0.24), transparent 70%);
+            border-radius: 50%;
+        }
+
+        .eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 14px;
+            border-radius: 999px;
+            background: rgba(57, 199, 183, 0.12);
+            color: var(--accent);
+            font-size: 0.82rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .hero h1 {
+            font-family: "Space Grotesk", sans-serif;
+            font-size: clamp(2rem, 4vw, 3.75rem);
+            line-height: 1.02;
+            margin: 18px 0 14px;
+            max-width: 760px;
+        }
+
+        .hero p {
+            margin: 0;
+            max-width: 760px;
+            font-size: 1rem;
+            line-height: 1.7;
+            color: var(--muted);
+        }
+
+        .grid {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: repeat(12, 1fr);
+        }
+
+        .summary-card,
+        .panel,
+        .result-card,
+        .chart-card {
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            background: var(--panel);
+            box-shadow: var(--shadow);
+            backdrop-filter: blur(16px);
+        }
+
+        .summary-card {
+            grid-column: span 4;
+            padding: 20px;
+        }
+
+        .summary-label {
+            color: var(--muted);
+            font-size: 0.86rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .summary-value {
+            font-family: "Space Grotesk", sans-serif;
+            font-size: 2rem;
+            margin-top: 10px;
+        }
+
+        .summary-note {
+            color: var(--muted);
+            margin-top: 10px;
+            line-height: 1.5;
+            font-size: 0.92rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 26px 0 20px;
+        }
+
+        .tab-button {
+            padding: 12px 16px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text);
+            cursor: pointer;
+            transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+            font-family: inherit;
+            font-size: 0.95rem;
+        }
+
+        .tab-button:hover {
+            transform: translateY(-1px);
+        }
+
+        .tab-button.active {
+            background: linear-gradient(135deg, rgba(57, 199, 183, 0.24), rgba(57, 199, 183, 0.1));
+            border-color: rgba(57, 199, 183, 0.5);
+        }
+
+        .panel {
+            padding: 24px;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .panel-title {
+            font-family: "Space Grotesk", sans-serif;
+            font-size: 1.5rem;
+            margin: 0;
+        }
+
+        .panel-subtitle {
+            color: var(--muted);
+            margin: 8px 0 0;
+            line-height: 1.6;
+        }
+
+        .controls {
+            display: grid;
+            gap: 14px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            margin-bottom: 22px;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .field label {
+            color: var(--muted);
+            font-size: 0.92rem;
+        }
+
+        .field select,
+        .field input {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 14px;
+            border: 1px solid rgba(139, 182, 205, 0.18);
+            background: rgba(5, 12, 18, 0.75);
+            color: var(--text);
+            font: inherit;
+        }
+
+        .radio-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .radio-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 14px;
+            border-radius: 999px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .button {
+            align-self: end;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 14px;
+            background: linear-gradient(135deg, var(--accent), #1f8fbc);
+            color: #041116;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .button:disabled {
+            opacity: 0.65;
+            cursor: not-allowed;
+        }
+
+        .status-line {
+            margin-bottom: 16px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: rgba(57, 199, 183, 0.1);
+            color: var(--accent);
+        }
+
+        .status-line.error {
+            background: rgba(255, 107, 107, 0.12);
+            color: #ffc3c3;
+        }
+
+        .result-grid {
+            display: grid;
+            gap: 14px;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        }
+
+        .result-card {
+            padding: 18px;
+        }
+
+        .result-rank {
+            color: var(--accent);
+            font-size: 0.85rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .result-title {
+            margin: 8px 0 6px;
+            font-family: "Space Grotesk", sans-serif;
+            font-size: 1.1rem;
+        }
+
+        .result-meta {
+            color: var(--muted);
+            font-size: 0.92rem;
+            margin-bottom: 12px;
+            min-height: 20px;
+        }
+
+        .score-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .score-bar {
+            height: 10px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .score-fill {
+            height: 100%;
+            border-radius: 999px;
+            background: linear-gradient(90deg, var(--accent), var(--accent-alt));
+        }
+
+        .charts-grid {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .chart-card {
+            padding: 18px;
+            min-height: 360px;
+        }
+
+        .chart-title {
+            font-family: "Space Grotesk", sans-serif;
+            margin: 0 0 16px;
+            font-size: 1.15rem;
+        }
+
+        .canvas-wrap {
+            position: relative;
+            height: 300px;
+        }
+
+        .empty-state {
+            padding: 28px;
+            border-radius: 20px;
+            border: 1px dashed rgba(135, 177, 198, 0.24);
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        .artist-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        @media (max-width: 980px) {
+            .summary-card {
+                grid-column: span 12;
+            }
+
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 720px) {
+            .page-shell {
+                padding: 20px 14px 36px;
+            }
+
+            .hero,
+            .panel {
+                border-radius: 22px;
+            }
+
+            .panel-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    {% raw %}
+    <script type="text/babel">
+        const { useEffect, useMemo, useRef, useState } = React;
+
+        function formatScore(value) {
+            if (value === null || value === undefined || Number.isNaN(Number(value))) {
+                return "0.0000";
+            }
+            return Number(value).toFixed(4);
+        }
+
+        function apiGet(url) {
+            return fetch(url).then(async (response) => {
+                const payload = await response.json();
+                if (!response.ok) {
+                    throw new Error(payload.error || "Request failed");
+                }
+                return payload;
+            });
+        }
+
+        function ChartCard({ title, labels, datasets, horizontal = false }) {
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current || !labels.length || !datasets.length) {
+                    return undefined;
+                }
+
+                if (chartRef.current) {
+                    chartRef.current.destroy();
+                }
+
+                chartRef.current = new Chart(canvasRef.current, {
+                    type: "bar",
+                    data: {
+                        labels,
+                        datasets,
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: horizontal ? "y" : "x",
+                        plugins: {
+                            legend: {
+                                labels: {
+                                    color: "#edf5f9",
+                                    font: {
+                                        family: "IBM Plex Sans",
+                                    },
+                                },
+                            },
+                        },
+                        scales: {
+                            x: {
+                                ticks: {
+                                    color: "#98afbe",
+                                },
+                                grid: {
+                                    color: "rgba(152, 175, 190, 0.12)",
+                                },
+                            },
+                            y: {
+                                ticks: {
+                                    color: "#98afbe",
+                                },
+                                grid: {
+                                    color: "rgba(152, 175, 190, 0.08)",
+                                },
+                            },
+                        },
+                    },
+                });
+
+                return () => {
+                    if (chartRef.current) {
+                        chartRef.current.destroy();
+                        chartRef.current = null;
+                    }
+                };
+            }, [labels, datasets, horizontal]);
+
+            return (
+                <div className="chart-card">
+                    <h3 className="chart-title">{title}</h3>
+                    <div className="canvas-wrap">
+                        <canvas ref={canvasRef}></canvas>
+                    </div>
+                </div>
+            );
+        }
+
+        function RecommendationCards({ items, scoreLabel }) {
+            if (!items.length) {
+                return <div className="empty-state">No results yet. Run a query to populate this panel.</div>;
+            }
+
+            const maxScore = Math.max(...items.map((item) => Number(item.score) || 0), 0.0001);
+
+            return (
+                <div className="result-grid">
+                    {items.map((item, index) => {
+                        const percent = Math.max((Number(item.score) || 0) / maxScore, 0) * 100;
+                        return (
+                            <div className="result-card" key={`${item.artist_id}-${index}`}>
+                                <div className="result-rank">Rank #{index + 1}</div>
+                                <div className="result-title">{item.artist_name}</div>
+                                <div className="result-meta">Artist ID: {item.artist_id}</div>
+                                <div className="score-row">
+                                    <span>{scoreLabel}</span>
+                                    <strong>{formatScore(item.score)}</strong>
+                                </div>
+                                <div className="score-bar">
+                                    <div className="score-fill" style={{ width: `${percent}%` }}></div>
+                                </div>
+                                {item.url && (
+                                    <div className="links">
+                                        <a className="artist-link" href={item.url} target="_blank" rel="noreferrer">
+                                            View on Last.fm
+                                        </a>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            );
+        }
+
+        function SummaryCards({ users, metrics, topArtists }) {
+            const userCount = users.length ? `${users.length} sample IDs` : "Loading...";
+            const bestPrecision = metrics
+                ? Math.max(metrics.user_cf["precision@10"], metrics.svd["precision@10"]).toFixed(4)
+                : "Loading...";
+            const hottestArtist = topArtists.length ? topArtists[0].artist_name : "Loading...";
+
+            return (
+                <div className="grid">
+                    <div className="summary-card">
+                        <div className="summary-label">User Explorer</div>
+                        <div className="summary-value">{userCount}</div>
+                        <div className="summary-note">The dashboard exposes 50 ready-to-test user IDs from the Last.FM 2K dataset.</div>
+                    </div>
+                    <div className="summary-card">
+                        <div className="summary-label">Best Precision@10</div>
+                        <div className="summary-value">{bestPrecision}</div>
+                        <div className="summary-note">Evaluation is based on a per-user 80/20 holdout split across known interactions.</div>
+                    </div>
+                    <div className="summary-card">
+                        <div className="summary-label">Most Played Artist</div>
+                        <div className="summary-value">{hottestArtist}</div>
+                        <div className="summary-note">Global charts summarize the raw play-count distribution from the full dataset.</div>
+                    </div>
+                </div>
+            );
+        }
+
+        function App() {
+            const [activeTab, setActiveTab] = useState("recommendations");
+            const [users, setUsers] = useState([]);
+            const [metrics, setMetrics] = useState(null);
+            const [topUsers, setTopUsers] = useState([]);
+            const [topArtists, setTopArtists] = useState([]);
+            const [globalError, setGlobalError] = useState("");
+
+            const [selectedUser, setSelectedUser] = useState("");
+            const [recommendationModel, setRecommendationModel] = useState("usercf");
+            const [recommendationCount, setRecommendationCount] = useState(10);
+            const [recommendations, setRecommendations] = useState([]);
+            const [recommendationState, setRecommendationState] = useState({ loading: false, error: "" });
+
+            const [artistQuery, setArtistQuery] = useState("");
+            const [similarCount, setSimilarCount] = useState(10);
+            const [similarArtists, setSimilarArtists] = useState([]);
+            const [similarState, setSimilarState] = useState({ loading: false, error: "" });
+
+            useEffect(() => {
+                async function bootstrap() {
+                    try {
+                        const [userPayload, metricsPayload, topUsersPayload, topArtistsPayload] = await Promise.all([
+                            apiGet("/api/users"),
+                            apiGet("/api/metrics"),
+                            apiGet("/api/topusers"),
+                            apiGet("/api/topartists"),
+                        ]);
+
+                        setUsers(userPayload.users || []);
+                        setSelectedUser((userPayload.users || [])[0] || "");
+                        setMetrics(metricsPayload);
+                        setTopUsers(topUsersPayload.top_users || []);
+                        setTopArtists(topArtistsPayload.top_artists || []);
+                    } catch (error) {
+                        setGlobalError(error.message || "Unable to load dashboard data.");
+                    }
+                }
+
+                bootstrap();
+            }, []);
+
+            async function fetchRecommendations() {
+                if (!selectedUser) {
+                    setRecommendationState({ loading: false, error: "Select a user before requesting recommendations." });
+                    return;
+                }
+
+                setRecommendationState({ loading: true, error: "" });
+                try {
+                    const payload = await apiGet(`/api/recommend/${recommendationModel}?user_id=${selectedUser}&n=${recommendationCount}`);
+                    setRecommendations(payload.recommendations || []);
+                    setRecommendationState({ loading: false, error: "" });
+                } catch (error) {
+                    setRecommendations([]);
+                    setRecommendationState({ loading: false, error: error.message || "Unable to fetch recommendations." });
+                }
+            }
+
+            async function fetchSimilarArtists() {
+                if (!artistQuery.trim()) {
+                    setSimilarState({ loading: false, error: "Enter an artist name to search similar artists." });
+                    return;
+                }
+
+                setSimilarState({ loading: true, error: "" });
+                try {
+                    const encodedArtist = encodeURIComponent(artistQuery.trim());
+                    const payload = await apiGet(`/api/similar?artist=${encodedArtist}&n=${similarCount}`);
+                    setSimilarArtists(payload.results || []);
+                    setSimilarState({ loading: false, error: "" });
+                } catch (error) {
+                    setSimilarArtists([]);
+                    setSimilarState({ loading: false, error: error.message || "Unable to fetch similar artists." });
+                }
+            }
+
+            const metricLabels = useMemo(() => ["Precision@5", "Precision@10", "Recall@5", "Recall@10"], []);
+            const metricDatasets = useMemo(() => {
+                if (!metrics) {
+                    return [];
+                }
+
+                return [
+                    {
+                        label: "User-CF",
+                        data: [
+                            metrics.user_cf["precision@5"],
+                            metrics.user_cf["precision@10"],
+                            metrics.user_cf["recall@5"],
+                            metrics.user_cf["recall@10"],
+                        ],
+                        backgroundColor: "rgba(57, 199, 183, 0.72)",
+                        borderRadius: 10,
+                    },
+                    {
+                        label: "Truncated SVD",
+                        data: [
+                            metrics.svd["precision@5"],
+                            metrics.svd["precision@10"],
+                            metrics.svd["recall@5"],
+                            metrics.svd["recall@10"],
+                        ],
+                        backgroundColor: "rgba(255, 154, 61, 0.72)",
+                        borderRadius: 10,
+                    },
+                ];
+            }, [metrics]);
+
+            const topArtistChart = useMemo(() => ({
+                labels: topArtists.map((item) => item.artist_name),
+                datasets: [
+                    {
+                        label: "Global play count",
+                        data: topArtists.map((item) => item.total_plays),
+                        backgroundColor: "rgba(57, 199, 183, 0.74)",
+                        borderRadius: 10,
+                    },
+                ],
+            }), [topArtists]);
+
+            const topUserChart = useMemo(() => ({
+                labels: topUsers.map((item) => `User ${item.user_id}`),
+                datasets: [
+                    {
+                        label: "Total play count",
+                        data: topUsers.map((item) => item.total_plays),
+                        backgroundColor: "rgba(255, 154, 61, 0.74)",
+                        borderRadius: 10,
+                    },
+                ],
+            }), [topUsers]);
+
+            return (
+                <div className="page-shell">
+                    <section className="hero">
+                        <div className="eyebrow">Last.FM HetRec 2011 · Flask + React Dashboard</div>
+                        <h1>Personalized music discovery with collaborative filtering and Truncated SVD.</h1>
+                        <p>
+                            Explore user-specific recommendations, inspect artist similarity, compare evaluation metrics,
+                            and scan the global listening charts from the 2K-user Last.FM dataset.
+                        </p>
+                    </section>
+
+                    <SummaryCards users={users} metrics={metrics} topArtists={topArtists} />
+
+                    <div className="tabs">
+                        <button className={`tab-button ${activeTab === "recommendations" ? "active" : ""}`} onClick={() => setActiveTab("recommendations")}>
+                            User Recommendations
+                        </button>
+                        <button className={`tab-button ${activeTab === "similar" ? "active" : ""}`} onClick={() => setActiveTab("similar")}>
+                            Similar Artists
+                        </button>
+                        <button className={`tab-button ${activeTab === "metrics" ? "active" : ""}`} onClick={() => setActiveTab("metrics")}>
+                            Model Metrics
+                        </button>
+                        <button className={`tab-button ${activeTab === "charts" ? "active" : ""}`} onClick={() => setActiveTab("charts")}>
+                            Top Charts
+                        </button>
+                    </div>
+
+                    {globalError && <div className="status-line error">{globalError}</div>}
+
+                    {activeTab === "recommendations" && (
+                        <section className="panel">
+                            <div className="panel-header">
+                                <div>
+                                    <h2 className="panel-title">User Recommendations</h2>
+                                    <p className="panel-subtitle">Pick a sample user, choose the recommender family, and compare ranked artist suggestions.</p>
+                                </div>
+                            </div>
+
+                            <div className="controls">
+                                <div className="field">
+                                    <label htmlFor="user-select">User ID</label>
+                                    <select id="user-select" value={selectedUser} onChange={(event) => setSelectedUser(event.target.value)}>
+                                        {users.map((userId) => (
+                                            <option key={userId} value={userId}>{userId}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="field">
+                                    <label>Recommendation model</label>
+                                    <div className="radio-row">
+                                        <label className="radio-chip">
+                                            <input
+                                                type="radio"
+                                                name="recommendationModel"
+                                                value="usercf"
+                                                checked={recommendationModel === "usercf"}
+                                                onChange={(event) => setRecommendationModel(event.target.value)}
+                                            />
+                                            User-CF
+                                        </label>
+                                        <label className="radio-chip">
+                                            <input
+                                                type="radio"
+                                                name="recommendationModel"
+                                                value="svd"
+                                                checked={recommendationModel === "svd"}
+                                                onChange={(event) => setRecommendationModel(event.target.value)}
+                                            />
+                                            Truncated SVD
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div className="field">
+                                    <label htmlFor="recommendation-count">How many results?</label>
+                                    <input
+                                        id="recommendation-count"
+                                        type="number"
+                                        min="1"
+                                        max="25"
+                                        value={recommendationCount}
+                                        onChange={(event) => setRecommendationCount(event.target.value)}
+                                    />
+                                </div>
+
+                                <button className="button" onClick={fetchRecommendations} disabled={recommendationState.loading}>
+                                    {recommendationState.loading ? "Loading..." : "Fetch recommendations"}
+                                </button>
+                            </div>
+
+                            {recommendationState.error && <div className="status-line error">{recommendationState.error}</div>}
+                            {recommendationState.loading && <div className="status-line">Computing personalized recommendations...</div>}
+
+                            <RecommendationCards items={recommendations} scoreLabel="Predicted score" />
+                        </section>
+                    )}
+
+                    {activeTab === "similar" && (
+                        <section className="panel">
+                            <div className="panel-header">
+                                <div>
+                                    <h2 className="panel-title">Similar Artists</h2>
+                                    <p className="panel-subtitle">Search the catalog and surface artists with the closest listener-overlap pattern.</p>
+                                </div>
+                            </div>
+
+                            <div className="controls">
+                                <div className="field">
+                                    <label htmlFor="artist-query">Artist name</label>
+                                    <input
+                                        id="artist-query"
+                                        type="text"
+                                        placeholder="Try Radiohead, Daft Punk, or Bjork"
+                                        value={artistQuery}
+                                        onChange={(event) => setArtistQuery(event.target.value)}
+                                    />
+                                </div>
+
+                                <div className="field">
+                                    <label htmlFor="similar-count">How many neighbors?</label>
+                                    <input
+                                        id="similar-count"
+                                        type="number"
+                                        min="1"
+                                        max="25"
+                                        value={similarCount}
+                                        onChange={(event) => setSimilarCount(event.target.value)}
+                                    />
+                                </div>
+
+                                <button className="button" onClick={fetchSimilarArtists} disabled={similarState.loading}>
+                                    {similarState.loading ? "Loading..." : "Find similar artists"}
+                                </button>
+                            </div>
+
+                            {similarState.error && <div className="status-line error">{similarState.error}</div>}
+                            {similarState.loading && <div className="status-line">Measuring artist-to-artist cosine similarity...</div>}
+
+                            <RecommendationCards items={similarArtists} scoreLabel="Similarity" />
+                        </section>
+                    )}
+
+                    {activeTab === "metrics" && (
+                        <section className="panel">
+                            <div className="panel-header">
+                                <div>
+                                    <h2 className="panel-title">Model Metrics</h2>
+                                    <p className="panel-subtitle">Precision and recall at K summarize how well each model recovers withheld user interactions.</p>
+                                </div>
+                            </div>
+
+                            {!metrics ? (
+                                <div className="status-line">Loading evaluation metrics...</div>
+                            ) : (
+                                <div className="charts-grid">
+                                    <ChartCard title="Precision / Recall Comparison" labels={metricLabels} datasets={metricDatasets} />
+                                    <div className="chart-card">
+                                        <h3 className="chart-title">Metric Snapshot</h3>
+                                        <div className="result-grid">
+                                            <div className="result-card">
+                                                <div className="result-rank">User-CF</div>
+                                                <div className="result-title">P@10 {formatScore(metrics.user_cf["precision@10"])}</div>
+                                                <div className="result-meta">R@10 {formatScore(metrics.user_cf["recall@10"])}</div>
+                                            </div>
+                                            <div className="result-card">
+                                                <div className="result-rank">Truncated SVD</div>
+                                                <div className="result-title">P@10 {formatScore(metrics.svd["precision@10"])}</div>
+                                                <div className="result-meta">R@10 {formatScore(metrics.svd["recall@10"])}</div>
+                                            </div>
+                                            <div className="result-card">
+                                                <div className="result-rank">User-CF</div>
+                                                <div className="result-title">P@5 {formatScore(metrics.user_cf["precision@5"])}</div>
+                                                <div className="result-meta">R@5 {formatScore(metrics.user_cf["recall@5"])}</div>
+                                            </div>
+                                            <div className="result-card">
+                                                <div className="result-rank">Truncated SVD</div>
+                                                <div className="result-title">P@5 {formatScore(metrics.svd["precision@5"])}</div>
+                                                <div className="result-meta">R@5 {formatScore(metrics.svd["recall@5"])}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </section>
+                    )}
+
+                    {activeTab === "charts" && (
+                        <section className="panel">
+                            <div className="panel-header">
+                                <div>
+                                    <h2 className="panel-title">Top Charts</h2>
+                                    <p className="panel-subtitle">Compare the heaviest listeners and the biggest global artists in a single view.</p>
+                                </div>
+                            </div>
+
+                            {!topArtists.length || !topUsers.length ? (
+                                <div className="status-line">Loading chart data...</div>
+                            ) : (
+                                <div className="charts-grid">
+                                    <ChartCard title="Top 10 Artists by Global Plays" labels={topArtistChart.labels} datasets={topArtistChart.datasets} horizontal={true} />
+                                    <ChartCard title="Top 10 Most Active Users" labels={topUserChart.labels} datasets={topUserChart.datasets} horizontal={true} />
+                                </div>
+                            )}
+                        </section>
+                    )}
+                </div>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+    {% endraw %}
+</body>
+</html>
